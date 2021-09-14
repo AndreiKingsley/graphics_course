@@ -35,10 +35,14 @@ const vec2 VERTICES[3] = vec2[3](
 	vec2(0.0, 1.0)
 );
 out vec3 color;
+
+uniform mat4 view;
+uniform mat4 transform;
+
 void main()
 {
 	vec2 position = VERTICES[gl_VertexID];
-	gl_Position = vec4(position, 0.0, 1.0);
+	gl_Position = view * transform * vec4(position, 0.0, 1.0);
 	color = vec3(position, 0.0);
 }
 )";
@@ -115,6 +119,8 @@ int main() try
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
+
+    SDL_GL_SetSwapInterval(0);
     if (!gl_context)
         sdl2_fail("SDL_GL_CreateContext: ");
 
@@ -130,6 +136,12 @@ int main() try
     GLuint fragment_shader = create_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
 
     GLuint program = create_program(vertex_shader, fragment_shader);
+    glUseProgram(program);
+
+    float time = 0.f;
+
+    auto transform_loc = glGetUniformLocation(program, "transform");
+    auto view_loc = glGetUniformLocation(program, "view");
 
     GLuint vao;
     glGenVertexArrays(1, &vao);
@@ -159,14 +171,44 @@ int main() try
             break;
 
         auto now = std::chrono::high_resolution_clock::now();
-        float dt = std::chrono::duration_cast<std::chrono::duration<float>>(now - last_frame_start).count();
+       // float dt = std::chrono::duration_cast<std::chrono::duration<float>>(now - last_frame_start).count();
+        float dt = 0.016f;
         last_frame_start = now;
+
+        std::cout << dt << std::endl;
+        time += dt;
 
         glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(program);
         glBindVertexArray(vao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
+
+        float scale_c = 0.7 ;
+        float cos_c = cos(time * 5) * scale_c;
+        float sin_c = sin(time * 5) * scale_c;
+
+        float aspect_ratio = (float)width  / (float)height;
+
+        float y = sin(time/10) / 2;
+        float x = cos(time/10) / 2;
+
+        float view[16] = {
+                1.f / aspect_ratio, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 0.0, 1.0,
+        };
+
+        float transform[16] = {
+                cos_c, -sin_c, 0.0, x,
+                sin_c, cos_c, 0.0, y,
+                0.0, 0.0, 1.0, 0.0,
+                0.0, 0.0, 0.0, 1.0
+        };
+
+        glUniformMatrix4fv(view_loc, 1, GL_TRUE, view);
+        glUniformMatrix4fv(transform_loc, 1, GL_TRUE, transform);
 
         SDL_GL_SwapWindow(window);
     }
