@@ -2,9 +2,7 @@
 #include <SDL.h>
 #undef main
 #else
-
 #include <SDL2/SDL.h>
-
 #endif
 
 #include <GL/glew.h>
@@ -12,67 +10,104 @@
 #include <string_view>
 #include <stdexcept>
 #include <iostream>
+#include <chrono>
 
-std::string to_string(std::string_view str) {
+std::string to_string(std::string_view str)
+{
     return std::string(str.begin(), str.end());
 }
 
-void sdl2_fail(std::string_view message) {
+void sdl2_fail(std::string_view message)
+{
     throw std::runtime_error(to_string(message) + SDL_GetError());
 }
 
-void glew_fail(std::string_view message, GLenum error) {
+void glew_fail(std::string_view message, GLenum error)
+{
     throw std::runtime_error(to_string(message) + reinterpret_cast<const char *>(glewGetErrorString(error)));
 }
 
-GLuint create_shader(GLenum shader_type, const char *shader_source) {
-    GLuint shader;
-    shader = glCreateShader(shader_type);
-    const GLchar *shader_src = shader_source;
-    glShaderSource(shader, 1, &shader_src, nullptr);
-    glCompileShader(shader);
-    GLint success;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-        GLint log_length;
-        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &log_length);
-        GLchar err_log[log_length];
-        glGetShaderInfoLog(shader, log_length, nullptr, err_log);
-        throw std::runtime_error(err_log);
+const char vertex_shader_source[] =
+        R"(#version 330 core
+const vec2 VERTICES[3] = vec2[3](
+	vec2(0.0, 0.0),
+	vec2(1.0, 0.0),
+	vec2(0.0, 1.0)
+);
+out vec3 color;
+void main()
+{
+	vec2 position = VERTICES[gl_VertexID];
+	gl_Position = vec4(position, 0.0, 1.0);
+	color = vec3(position, 0.0);
+}
+)";
+
+const char fragment_shader_source[] =
+        R"(#version 330 core
+in vec3 color;
+layout (location = 0) out vec4 out_color;
+void main()
+{
+	out_color = vec4(color, 1.0);
+}
+)";
+
+GLuint create_shader(GLenum type, const char * source)
+{
+    GLuint result = glCreateShader(type);
+    glShaderSource(result, 1, &source, nullptr);
+    glCompileShader(result);
+    GLint status;
+    glGetShaderiv(result, GL_COMPILE_STATUS, &status);
+    if (status != GL_TRUE)
+    {
+        GLint info_log_length;
+        glGetShaderiv(result, GL_INFO_LOG_LENGTH, &info_log_length);
+        std::string info_log(info_log_length, '\0');
+        glGetShaderInfoLog(result, info_log.size(), nullptr, info_log.data());
+        throw std::runtime_error("Shader compilation failed: " + info_log);
     }
-    return shader;
+    return result;
 }
 
-GLuint create_program(GLuint vertex_shader, GLuint fragment_shader) {
-    auto program = glCreateProgram();
-    glAttachShader(program, vertex_shader);
-    glAttachShader(program, fragment_shader);
-    glLinkProgram(program);
-    GLint success;
-    glGetProgramiv(program, GL_LINK_STATUS, &success);
-    if (!success) {
-        GLint log_length;
-        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &log_length);
-        GLchar err_log[log_length];
-        glGetShaderInfoLog(program, log_length, nullptr, err_log);
-        throw std::runtime_error(err_log);
+GLuint create_program(GLuint vertex_shader, GLuint fragment_shader)
+{
+    GLuint result = glCreateProgram();
+    glAttachShader(result, vertex_shader);
+    glAttachShader(result, fragment_shader);
+    glLinkProgram(result);
+
+    GLint status;
+    glGetProgramiv(result, GL_LINK_STATUS, &status);
+    if (status != GL_TRUE)
+    {
+        GLint info_log_length;
+        glGetProgramiv(result, GL_INFO_LOG_LENGTH, &info_log_length);
+        std::string info_log(info_log_length, '\0');
+        glGetProgramInfoLog(result, info_log.size(), nullptr, info_log.data());
+        throw std::runtime_error("Program linkage failed: " + info_log);
     }
-    return program;
+
+    return result;
 }
 
-int main() try {
-
+int main() try
+{
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
         sdl2_fail("SDL_Init: ");
 
-    SDL_Window *window = SDL_CreateWindow("Graphics course practice 1",
-                                          SDL_WINDOWPOS_CENTERED,
-                                          SDL_WINDOWPOS_CENTERED,
-                                          800, 600,
-                                          SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED);
+    SDL_Window * window = SDL_CreateWindow("Graphics course practice 1",
+                                           SDL_WINDOWPOS_CENTERED,
+                                           SDL_WINDOWPOS_CENTERED,
+                                           800, 600,
+                                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED);
 
     if (!window)
         sdl2_fail("SDL_CreateWindow: ");
+
+    int width, height;
+    SDL_GetWindowSize(window, &width, &height);
 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
@@ -91,67 +126,56 @@ int main() try {
 
     glClearColor(0.8f, 0.8f, 1.f, 0.f);
 
+    GLuint vertex_shader = create_shader(GL_VERTEX_SHADER, vertex_shader_source);
+    GLuint fragment_shader = create_shader(GL_FRAGMENT_SHADER, fragment_shader_source);
 
-    auto src_fragment = R"(
-            #version 330 core
-            layout (location = 0) out vec4 out_color;
-            flat in vec3 color;
-            void main()
-            {
-                out_color = vec4(color, 1.0);
-            }
-    )";
-    auto fragment_shader = create_shader(GL_FRAGMENT_SHADER, src_fragment);
+    GLuint program = create_program(vertex_shader, fragment_shader);
 
-    auto src_vertex = R"(
-            #version 330 core
-            const vec2 VERTICES[3] = vec2[3](
-                vec2(0.5, -0.5),
-                vec2(-0.5, -0.5),
-                vec2(0.0, 0.5)
-            );
-            flat out vec3 color;
-            void main()
-            {
-                gl_Position = vec4(VERTICES[gl_VertexID], 0.0, 1.0);
-                color = vec3(VERTICES[gl_VertexID], 1.0);
-            }
-    )";
-    auto vertex_shader = create_shader(GL_VERTEX_SHADER, src_vertex);
+    GLuint vao;
+    glGenVertexArrays(1, &vao);
 
-    auto program = create_program(vertex_shader, fragment_shader);
-
-    unsigned int VAO;
-    glGenVertexArrays(1, &VAO);
-
-
-    glProvokingVertex(GL_FIRST_VERTEX_CONVENTION);
+    auto last_frame_start = std::chrono::high_resolution_clock::now();
 
     bool running = true;
-
-    while (running) {
-        for (SDL_Event event; SDL_PollEvent(&event);)
-            switch (event.type) {
+    while (running)
+    {
+        for (SDL_Event event; SDL_PollEvent(&event);) switch (event.type)
+            {
                 case SDL_QUIT:
                     running = false;
+                    break;
+                case SDL_WINDOWEVENT: switch (event.window.event)
+                    {
+                        case SDL_WINDOWEVENT_RESIZED:
+                            width = event.window.data1;
+                            height = event.window.data2;
+                            glViewport(0, 0, width, height);
+                            break;
+                    }
                     break;
             }
 
         if (!running)
             break;
-        glUseProgram(program);
-        glBindVertexArray(VAO);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
 
+        auto now = std::chrono::high_resolution_clock::now();
+        float dt = std::chrono::duration_cast<std::chrono::duration<float>>(now - last_frame_start).count();
+        last_frame_start = now;
+
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glUseProgram(program);
+        glBindVertexArray(vao);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
 
         SDL_GL_SwapWindow(window);
     }
 
-
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
 }
-catch (std::exception const &e) {
+catch (std::exception const & e)
+{
     std::cerr << e.what() << std::endl;
     return EXIT_FAILURE;
 }
