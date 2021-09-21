@@ -2,7 +2,9 @@
 #include <SDL.h>
 #undef main
 #else
+
 #include <SDL2/SDL.h>
+
 #endif
 
 #include <GL/glew.h>
@@ -13,18 +15,15 @@
 #include <chrono>
 #include <vector>
 
-std::string to_string(std::string_view str)
-{
+std::string to_string(std::string_view str) {
     return std::string(str.begin(), str.end());
 }
 
-void sdl2_fail(std::string_view message)
-{
+void sdl2_fail(std::string_view message) {
     throw std::runtime_error(to_string(message) + SDL_GetError());
 }
 
-void glew_fail(std::string_view message, GLenum error)
-{
+void glew_fail(std::string_view message, GLenum error) {
     throw std::runtime_error(to_string(message) + reinterpret_cast<const char *>(glewGetErrorString(error)));
 }
 
@@ -51,15 +50,13 @@ void main()
 }
 )";
 
-GLuint create_shader(GLenum type, const char * source)
-{
+GLuint create_shader(GLenum type, const char *source) {
     GLuint result = glCreateShader(type);
     glShaderSource(result, 1, &source, nullptr);
     glCompileShader(result);
     GLint status;
     glGetShaderiv(result, GL_COMPILE_STATUS, &status);
-    if (status != GL_TRUE)
-    {
+    if (status != GL_TRUE) {
         GLint info_log_length;
         glGetShaderiv(result, GL_INFO_LOG_LENGTH, &info_log_length);
         std::string info_log(info_log_length, '\0');
@@ -69,8 +66,7 @@ GLuint create_shader(GLenum type, const char * source)
     return result;
 }
 
-GLuint create_program(GLuint vertex_shader, GLuint fragment_shader)
-{
+GLuint create_program(GLuint vertex_shader, GLuint fragment_shader) {
     GLuint result = glCreateProgram();
     glAttachShader(result, vertex_shader);
     glAttachShader(result, fragment_shader);
@@ -78,8 +74,7 @@ GLuint create_program(GLuint vertex_shader, GLuint fragment_shader)
 
     GLint status;
     glGetProgramiv(result, GL_LINK_STATUS, &status);
-    if (status != GL_TRUE)
-    {
+    if (status != GL_TRUE) {
         GLint info_log_length;
         glGetProgramiv(result, GL_INFO_LOG_LENGTH, &info_log_length);
         std::string info_log(info_log_length, '\0');
@@ -90,20 +85,17 @@ GLuint create_program(GLuint vertex_shader, GLuint fragment_shader)
     return result;
 }
 
-struct vec2
-{
+struct vec2 {
     float x;
     float y;
 };
 
-struct vertex
-{
+struct vertex {
     vec2 position;
     std::uint8_t color[4];
 };
 
-vec2 bezier(std::vector<vertex> const & vertices, float t)
-{
+vec2 bezier(std::vector<vertex> const &vertices, float t) {
     std::vector<vec2> points(vertices.size());
 
     for (std::size_t i = 0; i < vertices.size(); ++i)
@@ -119,8 +111,7 @@ vec2 bezier(std::vector<vertex> const & vertices, float t)
     return points[0];
 }
 
-int main() try
-{
+int main() try {
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
         sdl2_fail("SDL_Init: ");
 
@@ -131,11 +122,11 @@ int main() try
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 
-    SDL_Window * window = SDL_CreateWindow("Graphics course practice 3",
-                                           SDL_WINDOWPOS_CENTERED,
-                                           SDL_WINDOWPOS_CENTERED,
-                                           800, 600,
-                                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED);
+    SDL_Window *window = SDL_CreateWindow("Graphics course practice 3",
+                                          SDL_WINDOWPOS_CENTERED,
+                                          SDL_WINDOWPOS_CENTERED,
+                                          800, 600,
+                                          SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED);
 
     if (!window)
         sdl2_fail("SDL_CreateWindow: ");
@@ -167,16 +158,66 @@ int main() try
 
     float time = 0.f;
 
+    GLuint vao;
+    glGenVertexArrays(1, &vao);
+    glBindVertexArray(vao);
+
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+
+    std::vector<vertex> button_vertices;
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+    /*
+    glBufferData(
+            GL_ARRAY_BUFFER,
+            sizeof(vertices),
+            vertices,
+            GL_STATIC_DRAW
+    );
+     */
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vertex), (void *) (offsetof(vertex, position)));
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(vertex), (void *) (offsetof(vertex, color)));
+
+
+    GLuint vao_bezier;
+    glGenVertexArrays(1, &vao_bezier);
+    glBindVertexArray(vao_bezier);
+
+    GLuint vbo_bezier;
+    glGenBuffers(1, &vbo_bezier);
+
+    std::vector<vertex> bezier_vertices;
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_bezier);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vertex), (void *) (offsetof(vertex, position)));
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(vertex), (void *) (offsetof(vertex, color)));
+
+    bool vbo_changed = false;
+    bool bezier_changed = true;
+
+    glPointSize(10);
+
+    int quality = 10;
+
     bool running = true;
-    while (running)
-    {
-        for (SDL_Event event; SDL_PollEvent(&event);) switch (event.type)
-            {
+    while (running) {
+        for (SDL_Event event; SDL_PollEvent(&event);)
+            switch (event.type) {
                 case SDL_QUIT:
                     running = false;
                     break;
-                case SDL_WINDOWEVENT: switch (event.window.event)
-                    {
+                case SDL_WINDOWEVENT:
+                    switch (event.window.event) {
                         case SDL_WINDOWEVENT_RESIZED:
                             width = event.window.data1;
                             height = event.window.data2;
@@ -185,30 +226,39 @@ int main() try
                     }
                     break;
                 case SDL_MOUSEBUTTONDOWN:
-                    if (event.button.button == SDL_BUTTON_LEFT)
-                    {
+                    if (event.button.button == SDL_BUTTON_LEFT) {
                         int mouse_x = event.button.x;
                         int mouse_y = event.button.y;
+                        button_vertices.push_back(
+                                {
+                                    {
+                                        static_cast<float>(mouse_x),
+                                        static_cast<float>(mouse_y)
+                                        },
+                                 {255, 0, 0, 1}
+                                }
+                        );
+                        vbo_changed = true;
+                    } else if (event.button.button == SDL_BUTTON_RIGHT) {
+                        if (!button_vertices.empty()){
+                            button_vertices.pop_back();
+                        }
                     }
-                    else if (event.button.button == SDL_BUTTON_RIGHT)
-                    {
-
-                    }
+                    bezier_changed = true;
                     break;
                 case SDL_KEYDOWN:
-                    if (event.key.keysym.sym == SDLK_LEFT)
-                    {
-
+                    if (event.key.keysym.sym == SDLK_LEFT) {
+                        quality = std::max(1, quality - 1);
+                    } else if (event.key.keysym.sym == SDLK_RIGHT) {
+                        quality++;
                     }
-                    else if (event.key.keysym.sym == SDLK_RIGHT)
-                    {
-
-                    }
+                    bezier_changed = true;
                     break;
             }
 
         if (!running)
             break;
+
 
         auto now = std::chrono::high_resolution_clock::now();
         float dt = std::chrono::duration_cast<std::chrono::duration<float>>(now - last_frame_start).count();
@@ -219,8 +269,8 @@ int main() try
 
         float view[16] =
                 {
-                        1.f, 0.f, 0.f, 0.f,
-                        0.f, 1.f, 0.f, 0.f,
+                        2.f / width, 0.f, 0.f, -1.f,
+                        0.f, -2.f / height, 0.f, 1.f,
                         0.f, 0.f, 1.f, 0.f,
                         0.f, 0.f, 0.f, 1.f,
                 };
@@ -228,14 +278,58 @@ int main() try
         glUseProgram(program);
         glUniformMatrix4fv(view_location, 1, GL_TRUE, view);
 
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+        if (vbo_changed) {
+            glBufferData(
+                    GL_ARRAY_BUFFER,
+                    sizeof(vertex) * button_vertices.size(),
+                    button_vertices.data(),
+                    GL_STATIC_DRAW
+            );
+            vbo_changed = false;
+        }
+
+        glDrawArrays(GL_LINE_STRIP, 0, button_vertices.size());
+        glDrawArrays(GL_POINTS, 0, button_vertices.size());
+
+        glBindVertexArray(vao_bezier);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_bezier);
+
+        if (bezier_changed) {
+            int n = button_vertices.size();
+            int bezier_points_n = quality * n;
+            bezier_vertices.clear();
+            for (int i = 0; i < bezier_points_n; ++i) {
+                auto new_bezier = bezier(button_vertices, (float)i / (float) bezier_points_n);
+                vertex v {
+                        new_bezier,
+                        {0, 255, 0, 1}
+                };
+                bezier_vertices.push_back(v);
+            }
+
+            glBufferData(
+                    GL_ARRAY_BUFFER,
+                    sizeof(vertex) * bezier_vertices.size(),
+                    bezier_vertices.data(),
+                    GL_STATIC_DRAW
+            );
+
+            bezier_changed = false;
+        }
+
+        glDrawArrays(GL_LINE_STRIP, 0, bezier_vertices.size());
+
+
         SDL_GL_SwapWindow(window);
     }
 
     SDL_GL_DeleteContext(gl_context);
     SDL_DestroyWindow(window);
 }
-catch (std::exception const & e)
-{
+catch (std::exception const &e) {
     std::cerr << e.what() << std::endl;
     return EXIT_FAILURE;
 }
