@@ -103,7 +103,7 @@ struct vertex {
 
 
 float f_trig1(float x, float y, float t = 0.f) {
-    return (std::sin(5 * x + 2 * y) + std::cos(6 * y - 10 * t)) / 3.f;
+    return (std::sin(x * 5 + 2 * y) + std::cos(6 * y - 10 * t)) / 2.f;
 }
 
 int main() try {
@@ -261,7 +261,7 @@ int main() try {
         glClear(GL_DEPTH_BUFFER_BIT);
 
         glEnable(GL_DEPTH_TEST);
-        top =  ((float) height / (float) width) * right;
+        top = ((float) height / (float) width) * right;
 
         float view[16] =
                 {
@@ -325,8 +325,8 @@ int main() try {
         float transform_OX[16] =
                 {
                         1.f, 0.f, 0.f, 0.f,
-                        0.f, cos_x, sin_x , 0.f,
-                        0.f, -sin_x , cos_x, 0.f,
+                        0.f, cos_x, sin_x, 0.f,
+                        0.f, -sin_x, cos_x, 0.f,
                         0.f, 0.f, 0.f, 1.f,
                 };
 
@@ -348,27 +348,28 @@ int main() try {
         vertices.clear();
 
         vertices.push_back({{-1.f, -1.f, -1.f},
-                            {0,    0,   0, 100}});
+                            {0,    0,    0, 100}});
         vertices.push_back({{1.f, -1.f, -1.f},
-                            {0,   0,   0, 100}});
-        vertices.push_back({{-1.f, 1.f, -1.f},
-                            {0,   0,   0, 100}});
-        vertices.push_back({{-1.f, -1.f, -1.f},
                             {0,   0,    0, 100}});
-        vertices.push_back({{-1.f, -1.f, 1.f},
-                            {0,   0,   0, 100}});
+        vertices.push_back({{-1.f, 1.f, -1.f},
+                            {0,    0,   0, 100}});
         vertices.push_back({{-1.f, -1.f, -1.f},
-                            {0,   0,   0, 100}});
+                            {0,    0,    0, 100}});
+        vertices.push_back({{-1.f, -1.f, 1.f},
+                            {0,    0,    0, 100}});
+        vertices.push_back({{-1.f, -1.f, -1.f},
+                            {0,    0,    0, 100}});
 
 
         for (auto x: x_values) {
             for (auto y: y_values) {
-                float z = f_trig1(x, y);
-                auto r = (std::uint8_t) (255 * (z + 1.f) / 2.f);
+                float z = f_trig1(x, y, time);
+                //auto r = (std::uint8_t) (255 * (z + 1.f) / 2.f);
                 auto g = (std::uint8_t) (255 * (1.f - z) / 2.f);
+                //auto b = (std::uint8_t) (255 * (1.f - z) / 2.f);
                 vertex v = {
-                        {x,f_trig1(x, y, time), y},
-                        {r, g, 0, 255}
+                        {x, z, y},
+                        {255, g, 0, 255}
                 };
                 vertices.push_back(v);
             }
