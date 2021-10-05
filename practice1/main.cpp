@@ -31,13 +31,16 @@ void glew_fail(std::string_view message, GLenum error) {
 const char vertex_shader_source[] =
         R"(#version 330 core
 uniform mat4 view;
-uniform mat4 transform;
+uniform mat4 transform_scale;
+uniform mat4 transform_move;
+uniform mat4 transform_OY;
+uniform mat4 transform_OX;
 layout (location = 0) in vec3 in_position;
 layout (location = 1) in vec4 in_color;
 out vec4 color;
 void main()
 {
-	gl_Position = view * transform * vec4(in_position, 1.0);
+	gl_Position = view * transform_move * transform_scale * transform_OX * transform_OY * vec4(in_position, 1.0);
 	color = in_color;
 }
 )";
@@ -147,7 +150,10 @@ int main() try {
     auto program = create_program(vertex_shader, fragment_shader);
 
     GLuint view_location = glGetUniformLocation(program, "view");
-    GLuint transform_location = glGetUniformLocation(program, "transform");
+    GLuint transform_scale_location = glGetUniformLocation(program, "transform_scale");
+    GLuint transform_move_location = glGetUniformLocation(program, "transform_move");
+    GLuint transform_OX_location = glGetUniformLocation(program, "transform_OX");
+    GLuint transform_OY_location = glGetUniformLocation(program, "transform_OY");
 
     auto last_frame_start = std::chrono::high_resolution_clock::now();
 
@@ -204,8 +210,8 @@ int main() try {
     glBindVertexArray(vao);
 
 
-    float near = 0.01;
-    float far = 100.0;
+    float near = 0.05;
+    float far = 200.0;
     float right = near * tan(M_PI / 4.f);
     float top = height / (float) width * right;
 
@@ -255,7 +261,7 @@ int main() try {
         glClear(GL_DEPTH_BUFFER_BIT);
 
         glEnable(GL_DEPTH_TEST);
-        top = height / (float) width * right;
+        top =  ((float) height / (float) width) * right;
 
         float view[16] =
                 {
@@ -300,31 +306,58 @@ int main() try {
         float cos_y = cos(d_angle_y);
         float sin_y = sin(d_angle_y);
 
-        float transform[16] =
+        float transform_scale[16] =
                 {
-                        scale * cos_y, 0.f, sin_y * scale, 0.f,
-                        0.f, scale * cos_x, sin_x * scale, 0.f,
-                        -sin_y * scale, -sin_x * scale, scale * cos_x * cos_y, -5.f,
+                        scale, 0.f, 0.f, 0.f,
+                        0.f, scale, 0.f, 0.f,
+                        0.f, -0.f, scale, 0.f,
+                        0.f, 0.f, 0.f, 1.f,
+                };
+
+        float transform_move[16] =
+                {
+                        1.f, 0.f, 0.f, 0.f,
+                        0.f, 1.f, 0.f, 0.f,
+                        0.f, -0.f, 1.f, -8.f,
+                        0.f, 0.f, 0.f, 1.f,
+                };
+
+        float transform_OX[16] =
+                {
+                        1.f, 0.f, 0.f, 0.f,
+                        0.f, cos_x, sin_x , 0.f,
+                        0.f, -sin_x , cos_x, 0.f,
+                        0.f, 0.f, 0.f, 1.f,
+                };
+
+        float transform_OY[16] =
+                {
+                        cos_y, 0.f, sin_y, 0.f,
+                        0.f, 1.f, 0.f, 0.f,
+                        -sin_y, 0.f, cos_y, 0.f,
                         0.f, 0.f, 0.f, 1.f,
                 };
 
         glUseProgram(program);
         glUniformMatrix4fv(view_location, 1, GL_TRUE, view);
-        glUniformMatrix4fv(transform_location, 1, GL_TRUE, transform);
+        glUniformMatrix4fv(transform_scale_location, 1, GL_TRUE, transform_scale);
+        glUniformMatrix4fv(transform_move_location, 1, GL_TRUE, transform_move);
+        glUniformMatrix4fv(transform_OX_location, 1, GL_TRUE, transform_OX);
+        glUniformMatrix4fv(transform_OY_location, 1, GL_TRUE, transform_OY);
 
         vertices.clear();
 
-        vertices.push_back({{-1.f, 0.f, 0.f},
+        vertices.push_back({{-1.f, -1.f, -1.f},
                             {0,    0,   0, 100}});
-        vertices.push_back({{1.f, 0.f, 0.f},
+        vertices.push_back({{1.f, -1.f, -1.f},
                             {0,   0,   0, 100}});
-        vertices.push_back({{0.f, 1.f, 0.f},
+        vertices.push_back({{-1.f, 1.f, -1.f},
                             {0,   0,   0, 100}});
-        vertices.push_back({{0.f, -1.f, 0.f},
+        vertices.push_back({{-1.f, -1.f, -1.f},
                             {0,   0,    0, 100}});
-        vertices.push_back({{0.f, 0.f, 1.f},
+        vertices.push_back({{-1.f, -1.f, 1.f},
                             {0,   0,   0, 100}});
-        vertices.push_back({{0.f, 0.f, -1.f},
+        vertices.push_back({{-1.f, -1.f, -1.f},
                             {0,   0,   0, 100}});
 
 
@@ -334,7 +367,7 @@ int main() try {
                 auto r = (std::uint8_t) (255 * (z + 1.f) / 2.f);
                 auto g = (std::uint8_t) (255 * (1.f - z) / 2.f);
                 vertex v = {
-                        {x,f_trig1(x, y, 0.f), y},
+                        {x,f_trig1(x, y, time), y},
                         {r, g, 0, 255}
                 };
                 vertices.push_back(v);
@@ -373,10 +406,10 @@ int main() try {
 
         glPointSize(5.f);
         glDrawElements(GL_POINTS, 1, GL_UNSIGNED_INT, (void *) (1 * sizeof(indices[0])));
-        glDrawElements(GL_POINTS, 1, GL_UNSIGNED_INT, (void *) (3 * sizeof(indices[0])));
+        glDrawElements(GL_POINTS, 1, GL_UNSIGNED_INT, (void *) (2 * sizeof(indices[0])));
         glDrawElements(GL_LINE_STRIP, 2, GL_UNSIGNED_INT, (void *) (0));
         glDrawElements(GL_LINE_STRIP, 2, GL_UNSIGNED_INT, (void *) (2 * sizeof(indices[0])));
-        glDrawElements(GL_POINTS, 1, GL_UNSIGNED_INT, (void *) (5 * sizeof(indices[0])));
+        glDrawElements(GL_POINTS, 1, GL_UNSIGNED_INT, (void *) (4 * sizeof(indices[0])));
         glDrawElements(GL_LINE_STRIP, 2, GL_UNSIGNED_INT, (void *) (4 * sizeof(indices[0])));
 
         SDL_GL_SwapWindow(window);
