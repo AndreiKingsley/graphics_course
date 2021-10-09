@@ -4,6 +4,8 @@
 #else
 
 #include <SDL2/SDL.h>
+#include "glm/glm.hpp"
+#include "glm/ext.hpp"
 
 #endif
 
@@ -126,6 +128,9 @@ struct plot_data {
     // detailing level = grid side size
     std::uint32_t grid_size = 50;
 
+    std::uint32_t isoline_number = 5;
+    std::vector<float> isoline_values;
+
     // triangle indices
     std::vector<std::uint32_t> indices;
 
@@ -139,6 +144,8 @@ struct plot_data {
     //color components of vertices
     std::vector<rba> colors_rba;
     std::vector<std::uint8_t> colors_g;
+
+    std::vector<vertex> isolines_vertices;
 
     void update_grid() {
         indices.clear();
@@ -187,6 +194,78 @@ struct plot_data {
                 colors_g.push_back(g);
             }
         }
+    }
+
+    void update_isoline_number(){
+        isoline_values.clear();
+        float period = (float) 2.f / (float) (isoline_number - 1);
+        for (int i = 1; i < isoline_number - 1; ++i) {
+            isoline_values.push_back(-1.f + period * (float) i);
+        }
+    }
+
+    void update_all_isolines(){
+        isolines_vertices.clear();
+        for (float val: isoline_values) {
+            update_isoline(val);
+        }
+    }
+
+    void update_isoline(float isoline_value) {
+
+        for (int i = 0; i < indices.size(); i += 3) {
+
+            auto v0 = std::make_pair(
+                    positions_y[indices[i]],
+                    std::make_pair(
+                            positions_xz[indices[i]].x,
+                            positions_xz[indices[i]].z
+                    ));
+            auto v1 = std::make_pair(positions_y[indices[i+1]], std::make_pair(
+                    positions_xz[indices[i+1]].x,
+                    positions_xz[indices[i+1]].z
+            ));
+            auto v2 = std::make_pair(positions_y[indices[i+2]], std::make_pair(
+                    positions_xz[indices[i+2]].x,
+                    positions_xz[indices[i+2]].z
+            ));
+            std::array v = {v0, v1, v2};
+            std::sort(v.begin(), v.end());
+
+            float x0 = v[0].second.first;
+            float y0 = v[0].first;
+            float z0 = v[0].second.second;
+            float x1 = v[1].second.first;
+            float y1 = v[1].first;
+            float z1 = v[1].second.second;
+            float x2 = v[2].second.first;
+            float y2 = v[2].first;
+            float z2 = v[2].second.second;
+
+            if (y0 > isoline_value || y2 < isoline_value) {
+                continue;
+            }
+
+            float a_02 = (isoline_value - y0) / (y2 - y0);
+            float x_02 = std::lerp(x0, x2, a_02);
+            float z_02 = std::lerp(z0, z2, a_02);
+            isolines_vertices.push_back({{x_02, z_02}, isoline_value, {0, 200, 255}, 0});
+
+            float x_other;
+            float z_other;
+            if (v[1].first > isoline_value) {
+                float a = (isoline_value - y0) / (y1 - y0);
+                x_other = std::lerp(x0, x1, a);
+                z_other = std::lerp(z0, z1, a);
+            } else {
+                float a = (isoline_value - y1) / (y2 - y1);
+                x_other = std::lerp(x1, x2, a);
+                z_other = std::lerp(z1, z2, a);
+            }
+            isolines_vertices.push_back({{x_other, z_other}, isoline_value, {0, 0, 255}, 0});
+
+        }
+
     }
 };
 
@@ -249,6 +328,7 @@ int main() try {
     plot_data data;
     data.update_grid();
     data.update_vertices(0.f);
+    data.update_isoline_number();
 
     GLuint vao_main;
     glGenVertexArrays(1, &vao_main);
@@ -257,11 +337,11 @@ int main() try {
     GLuint ebo_vertices;
     glGenBuffers(1, &ebo_vertices);
     //static if detailing levels hasn't changed
-    GLuint vbo_xy;
-    glGenBuffers(1, &vbo_xy);
+    GLuint vbo_xz;
+    glGenBuffers(1, &vbo_xz);
     //always dynamic
-    GLuint vbo_z;
-    glGenBuffers(1, &vbo_z);
+    GLuint vbo_y;
+    glGenBuffers(1, &vbo_y);
     //static if detailing levels hasn't changed
     GLuint vbo_rba;
     glGenBuffers(1, &vbo_rba);
@@ -306,7 +386,7 @@ int main() try {
             {{-1.f, -1.f}, -1.f,
                     {0, 0, 255}, 0},
             {{-1.f, 1.f},  -1.f,
-                    {0, 0, 255}, 100},
+                    {0, 0, 255}, 0},
     };
 
     std::uint32_t indices_axes[6] = {0, 1, 2, 3, 4, 5};
@@ -338,7 +418,7 @@ int main() try {
             GL_STATIC_DRAW
     );
 
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_xy);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_xz);
 
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec2), (void *) (0));
@@ -350,7 +430,7 @@ int main() try {
             GL_STATIC_DRAW
     );
 
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_z);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_y);
 
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(float), (void *) (0));
@@ -386,6 +466,28 @@ int main() try {
             GL_STATIC_DRAW
     );
 
+    GLuint vao_il;
+    glGenVertexArrays(1, &vao_il);
+    glBindVertexArray(vao_il);
+
+    //always static
+    GLuint vbo_il, ebo_il;
+    glGenBuffers(1, &vbo_il);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_il);
+    //glGenBuffers(1, &ebo_il);
+    //glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_il);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vertex), (void *) (offsetof(vertex, position_xz)));
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(vertex), (void *) (offsetof(vertex, position_y)));
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 3, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(vertex), (void *) (offsetof(vertex, color_rba)));
+
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 1, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(vertex), (void *) (offsetof(vertex, color_g)));
 
 
     float near = 0.05;
@@ -478,7 +580,7 @@ int main() try {
             if (button_down[SDLK_EQUALS]) {
                 data.grid_size += 1;
             }
-            //std::cout << data.grid_size << std::endl;
+
             data.update_grid();
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo_vertices);
             glBufferData(
@@ -488,7 +590,7 @@ int main() try {
                     GL_STATIC_DRAW
             );
 
-            glBindBuffer(GL_ARRAY_BUFFER, vbo_xy);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo_xz);
             glBufferData(
                     GL_ARRAY_BUFFER,
                     sizeof(data.positions_xz[0]) * data.positions_xz.size(),
@@ -505,7 +607,17 @@ int main() try {
             );
         }
 
+        if (button_down[SDLK_1]) {
+            if (data.isoline_number > 2) {
+                data.isoline_number -= 1;
+                data.update_isoline_number();
+            }
+        }
 
+        if (button_down[SDLK_2]) {
+            data.isoline_number += 1;
+            data.update_isoline_number();
+        }
 
 
         float cos_x = cos(d_angle_x);
@@ -540,7 +652,7 @@ int main() try {
 
         float transform_OY[16] =
                 {
-                        cos_y,0.f, sin_y,  0.f,
+                        cos_y, 0.f, sin_y, 0.f,
                         0.f, 1.f, 0.f, 0.f,
                         -sin_y, 0.f, cos_y, 0.f,
                         0.f, 0.f, 0.f, 1.f,
@@ -555,7 +667,7 @@ int main() try {
 
         data.update_vertices(time);
 
-        glBindBuffer(GL_ARRAY_BUFFER, vbo_z);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_y);
         glBufferData(
                 GL_ARRAY_BUFFER,
                 sizeof(data.positions_y[0]) * data.positions_y.size(),
@@ -571,19 +683,35 @@ int main() try {
                 GL_STATIC_DRAW
         );
 
+        data.update_all_isolines();
+
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_il);
+        glBufferData(
+                GL_ARRAY_BUFFER,
+                sizeof(data.isolines_vertices[0]) * data.isolines_vertices.size(),
+                data.isolines_vertices.data(),
+                GL_STATIC_DRAW
+        );
+
         glBindVertexArray(vao_main);
-        glDrawElements(GL_TRIANGLES, data.indices.size(),GL_UNSIGNED_INT, (void *) (0));
+        glDrawElements(GL_TRIANGLES, data.indices.size(), GL_UNSIGNED_INT, (void *) (0));
+
+        glBindVertexArray(vao_il);
+        glLineWidth(3.5f);
+        glDrawArrays(GL_LINES, 0, data.isolines_vertices.size());
+        glLineWidth(1.f);
 
         glDisable(GL_DEPTH_TEST);
         glBindVertexArray(vao_axes);
         glPointSize(5.f);
         auto offset = sizeof(indices_axes[0]);
-        glDrawElements(GL_LINE_STRIP, 2,GL_UNSIGNED_INT, (void *) (0 * offset));
-        glDrawElements(GL_POINTS, 1 ,GL_UNSIGNED_INT, (void *) (1 * offset));
-        glDrawElements(GL_LINE_STRIP, 2,GL_UNSIGNED_INT, (void *) (2 * offset));
-        glDrawElements(GL_POINTS, 1 ,GL_UNSIGNED_INT, (void *) (3 * offset));
-        glDrawElements(GL_LINE_STRIP, 2,GL_UNSIGNED_INT, (void *) (4 * offset));
-        glDrawElements(GL_POINTS, 1 ,GL_UNSIGNED_INT, (void *) (5 * offset));
+        glDrawElements(GL_LINE_STRIP, 2, GL_UNSIGNED_INT, (void *) (0 * offset));
+        glDrawElements(GL_POINTS, 1, GL_UNSIGNED_INT, (void *) (1 * offset));
+        glDrawElements(GL_LINE_STRIP, 2, GL_UNSIGNED_INT, (void *) (2 * offset));
+        glDrawElements(GL_POINTS, 1, GL_UNSIGNED_INT, (void *) (3 * offset));
+        glDrawElements(GL_LINE_STRIP, 2, GL_UNSIGNED_INT, (void *) (4 * offset));
+        glDrawElements(GL_POINTS, 1, GL_UNSIGNED_INT, (void *) (5 * offset));
+
 
         SDL_GL_SwapWindow(window);
     }
